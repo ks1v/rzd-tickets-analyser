@@ -3,40 +3,27 @@
 
 import os
 
-import ConfigParser
+os.system('rm -rf ./../tickets')  
+
+test_commands = []
+test_commands.append('-a') # Display table and stats
+test_commands.append('-a -s pages -s tickets -s table') 
+test_commands.append('-l pages') # Display table and stats
+test_commands.append('-l pages -d stats') 
 
 
-#пароль сериализуй в файл настроек и дергай извне
 
-#test_commands = []]
-#test_commands.append(['-l tickets ./../tickets/tickets.pkl -n Киселев -d stats'])
-#test_commands.append(['-l tickets ./../tickets/tickets.pkl -n Киселев -d stats'])
 
-#for it in range(0,len(test_commands)) :
-    #print 'Test #'+str(it)
-    #os.system('python ./rzd-ticket-analyser.py '+test_commands[it])
+for it in range(0, len(test_commands)) :
+    print '\n\nTest #'+str(it)+'\n'
+    os.system('python ./rzd-ticket-analyser.py ' + test_commands[it])
+    print '\n\n'
+
 
     
+  
     
-    
-def getOptions(path) :
-    """
-    getOptions(path)   
-        reads options from config file using ConfigParser module
-        returns dict of options
-    """ 
-    options = {}
-    cp = ConfigParser.ConfigParser()
-    cp.read(path)
-    for section in cp.sections() :
-        for option in cp.options(section) :
-            options[option] = cp.get(section, option)
-    return options
 
-op = getOptions('./config')
-
-for it in op.keys() :
-    print it,'=',op[it]
 
 
 
