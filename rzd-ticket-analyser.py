@@ -1,59 +1,69 @@
+#!/usr/bin/python
 # -*- coding: UTF-8 -*-
 
 __author__  = 'Andrew ks1v Kiselev'
 __email__   = "mail@andrewkiselev.com"
 __year__    = "2012"
-__title__   = "Simple RZD tickets analyser"
-__version__ = 1.0
-__new__     = '+ License;\n\
-               + All functions commented;\n\
-               + Script renamed;\n\
-               + Code clean-up.'
+__title__   = "RZD tickets analyser"
+__version__ = 1.0.1
 
 
 import httplib2                 # Downloading
 from urllib import urlencode    # Downloading
 import datetime                 # Parsing, Statistic
-import re                       # Parsing
+from re import finditer, escape # Parsing
 import string                   # Parsing
 import hashlib                  # Serialization
 import pickle                   # Serialization
 import os                       # DeSerialization
-import numpy                    # Statistic
-from scipy import *             # Statistic
+import numpy as np              # Statistic
 import sys                      # Commands parsing
 
 
-
-# == Release ==
-# TODO [done] Command interface
-# TODO [done] Testing - Command interface
-# TODO [done] Licence verification
-# TODO [done] Help verification
-# TODO [done] Code clean-up
-# TODO [done]- Comment all the functions
-# TODO [done]- +|-|:
-# TODO [done] - Help and Lic in external file
-
 # == Next ==
 # TODO Config file for all constats 
+# TODO - constats
+# TODO - key for config and default path
+# TODO - sample config
+# TODO Tests
 # TODO Pickel replacement
 # TODO Import optimization
 # TODO Exceptions
 # TODO Testing - Accounts
+# TODO Default commands' values'
+
+
+# CONFIG
+
+def getOptions(path) :
+    """
+    getOptions(path)   
+        reads options from config file using ConfigParser module
+        returns dict of options
+    """ 
+    # FIXME File existance error
+    # FIXME Config read error
+    options = {}
+    config = ConfigParser.ConfigParser()
+    config.read(path)
+    for section in config.sections() :
+        for option in config.options(section) :
+            options[option] = config.get(section, option)
+    return options
+    
 
 # SITE
 
-def rzdAuth(login, password) :
+def rzdAuth(login, password) :   # MARK ! Login password
     """
     rzdAuth(login, password)
         returns [http, headers]
             http - http object
             headers - headers with cookies
     """
-    host = "http://ticket.rzd.ru"
-    auth_page  = host + "/isvp/public/j_security_check"
-    error_page = host + "/pass/public/logonErr"
+    host = "http://ticket.rzd.ru"   # MARK ! Host
+    auth_page  = host + "/isvp/public/j_security_check"  # MARK ! Auth page
+    error_page = host + "/pass/public/logonErr"  # MARK ! error page
     headers = {'Content-type': 'application/x-www-form-urlencoded'}
     auth_form = { "j_username" : login,
                   "j_password" : password,
@@ -83,8 +93,8 @@ def nextCabinetPageURLPosition(cabinet_page) :
     nextCabinetPageURLPosition(cabinet_page)
         returns numerical position of the next cabinet page or -1 o/w
     """
-    current_page_mark = 'curPage'
-    next_page_url_mark = '/pass/secure/ticket/cabinet?STRUCTURE_ID=14&page'
+    current_page_mark = 'curPage'  # MARK current page mark
+    next_page_url_mark = '/pass/secure/ticket/cabinet?STRUCTURE_ID=14&page'  # MARK next page url mark
 
     mark_position = string.find(cabinet_page, current_page_mark)
     next_page_position = string.find(cabinet_page, next_page_url_mark, mark_position)
@@ -95,10 +105,10 @@ def nextCabinetPageURLExtraction(cabinet_page, next_page_url_position) :
     nextCabinetPageURLExtraction(cabinet_page, next_page_url_position)
         returns URL of the next cabinet page
     """
-    HOST = "http://ticket.rzd.ru"
+    HOST = "http://ticket.rzd.ru"  # MARK Host
 
     start_pos = next_page_url_position
-    end_pos = start_pos + string.find(cabinet_page[start_pos : start_pos + 200], '">')
+    end_pos = start_pos + string.find(cabinet_page[start_pos : start_pos + 200], '">')  # MARK cabinet page end mark
     next_page_url = cabinet_page[start_pos : end_pos]
 
     # httplib2 understands only absolute URLs
@@ -115,8 +125,8 @@ def getTicketURLs(http, headers) :
     """
 
     ticket_urls = []
-    cabinet_url = "https://ticket.rzd.ru/pass/secure/ticket/cabinet?STRUCTURE_ID=14"
-    ticket_url_mark = "/pass/secure/ticket/cabinet?STRUCTURE_ID=14&layer_id=5020"
+    cabinet_url = "https://ticket.rzd.ru/pass/secure/ticket/cabinet?STRUCTURE_ID=14"   # MARK first cabinet url
+    ticket_url_mark = "/pass/secure/ticket/cabinet?STRUCTURE_ID=14&layer_id=5020"  # MARK ticket url mark
 
     while True :
 
@@ -160,7 +170,7 @@ def ticketURLsExtraction(page, ticket_urls_positions) :
     """
     ticket_urls = []
     for start_pos in ticket_urls_positions :
-        end_pos = start_pos + string.find(page[start_pos : start_pos + 300], "target") - 2
+        end_pos = start_pos + string.find(page[start_pos : start_pos + 300], "target") - 2  # MARK ticket url end mark
         ticket_url = page[start_pos : end_pos]
         ticket_urls.append(ticket_url)
 
@@ -172,9 +182,9 @@ def getTicketPagesByURL(http, headers, ticket_urls) :
         returns list of pages with ticket data inside
         using list of ticket URLs ('ticket_urls') from pre-authorized account ('http', 'headers')
     """
-    HOST = "http://ticket.rzd.ru"
+    HOST = "http://ticket.rzd.ru"  # MARK Host
 
-    print "\nTickets fetching started.\n"
+    print "\nStart tickets fetching.\n"
 
     ticket_pages = []
 
@@ -187,7 +197,7 @@ def getTicketPagesByURL(http, headers, ticket_urls) :
         # Fetching ticket page
         response, ticket_page = http.request(url, "GET", headers = headers)
 
-        print "\tFetched ticket at " + url + " with status " + response['status'] + "."
+        print "\tTicket fetched at " + url + " with status " + response['status'] + "."
 
         # if page really fetched => store it
         if response['status'] == '200' :
@@ -259,7 +269,7 @@ def getHist(data) :
 
 # SERIALIZATION
 
-def saveTicketPages(ticket_pages, path = './ticket_pages') :
+def saveTicketPages(ticket_pages, path = './ticket_pages') :  # MARK Ticket pages def path
     """
     saveTicketPages(ticket_pages)
         write pages with ticket data inside on disk
@@ -280,7 +290,7 @@ def saveTicketPages(ticket_pages, path = './ticket_pages') :
 
     print '\nTicket pages are saved in ' + path
 
-def loadTicketPages(path = './ticket_pages') :
+def loadTicketPages(path = './ticket_pages') :   # MARK Ticket pages def path
     """
     getTicketPages(path)
         load html ticket pages from 'path' directory
@@ -298,7 +308,7 @@ def loadTicketPages(path = './ticket_pages') :
     print '\t---------------------\n\t' + str(len(ticket_pages)) + ' / ' + str(len(os.listdir(path))) + " files loaded."
     return ticket_pages
 
-def saveTickets(tickets, path = './tickets.pkl') :
+def saveTickets(tickets, path = './tickets.pkl') :  # MARK tickets def path
     """
     saveTickets(tickets, path = './tickets.pkl')
         serialize tickets to the 'path' file
@@ -309,19 +319,20 @@ def saveTickets(tickets, path = './tickets.pkl') :
     fd.close()
     print "\nTickets are saved as a file in" + path
 
-def loadTickets(path = './tickets.pkl') :
+def loadTickets(path = './tickets.pkl') :   # MARK tickets def path
     """
     loadTickets(path = './tickets.pkl')
         deserialize (read) tickets from the 'path' file
         returns tickets as a list of dicts
     """
+    # FIXME Open or read error
     fd = open(path, 'r')
     tickets = pickle.load(fd)
     fd.close()
     print '\nTickets loaded from ' + path
     return tickets
 
-def saveCSVTable(tickets, path = './tickets_table.csv') :
+def saveCSVTable(tickets, path = './tickets_table.csv') :  # MARK tickets def table
     """
     saveCSVTable(table, path)
         write CSV formatted 'table' on disk as 'path' file
@@ -356,7 +367,7 @@ def treatTextFields(tickets) :
 
     # Cities and Stations
     #                       Original        City                    Station
-    substitutions_dict = {u'Горький м'   : [u'Нижний Новогород', u'Московский вокзал)'],
+    substitutions_dict = {u'Горький м'   : [u'Нижний Новогород', u'Московский вокзал)'],  # MARK Cities and stations replasement
                           u'Н.новгород м': [u'Нижний Новогород', u'Московский вокзал'],
                           u'Москва яр'   : [u'Москва',           u'Ярославский вокзал'],
                           u'Москва кур'  : [u'Москва',           u'Курский вокзал'],
@@ -374,7 +385,7 @@ def treatTextFields(tickets) :
 
     return tickets
 
-def parseTicketPages(ticket_pages) :
+def parseTicketPages(ticket_pages) :  # MARK Marks
     """
     parseTicketPages(ticket_pages)
         'ticket_pages' - list of string with ticket pages
@@ -439,7 +450,7 @@ def parseTicketPages(ticket_pages) :
                 end_pos = start_pos + string.find( ticket_page[mark_pos + int(mark[1]) : mark_pos + 200], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
 
-                middle_pos = string.find(chunk, "&nbsp;-&nbsp;")
+                middle_pos = string.find(chunk, "&nbsp;-&nbsp;")  # MARK Route mid mark
                 ticket[mark[4][0]] = chunk[0 : middle_pos]                                 #departureCity
                 ticket[mark[4][1]] = chunk[middle_pos + len("&nbsp;-&nbsp;") : len(chunk)] #arrivalCity
 
@@ -461,7 +472,7 @@ def parseTicketPages(ticket_pages) :
                 # Position of the passenger's name depends on ticket price's position
                 price = str(ticket['price'])
                 price_pos = string.find(ticket_page, price)     # Too weak, price - just a three or four digit number
-                start_pos = string.find(ticket_page[price_pos : price_pos + 20], "<td>") + price_pos + len("<td>")
+                start_pos = string.find(ticket_page[price_pos : price_pos + 20], "<td>") + price_pos + len("<td>")  # MARK passenger end mark
                 end_pos = start_pos + string.find(ticket_page[start_pos : start_pos + 50], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
                 ticket[mark[4]] = chunk
@@ -489,16 +500,16 @@ def formTable(tickets) :
         returns printable CSV table
         'tickets' - list of dicts
     """
-
+      # MARK Table field order
     # Strong order of the fields for dictionary printing
     # List
     fields = ['orderNumber',       # 0
               'orderDatetime',     # 1
               'trainNumber',       # 2
               'departureCity',     # 3
-              'departureStation',   # 4
+              'departureStation',  # 4
               'arrivalCity',       # 5
-              'arrivalStation',     # 6
+              'arrivalStation',    # 6
               'departureDatetime', # 7
               'arrivalDatetime',   # 8
               'carNumber',         # 9
@@ -527,7 +538,7 @@ def formTable(tickets) :
                 chunk = ticket[field].encode('utf-8', 'ignore')
 
             if field.endswith('Datetime') :
-                chunk = datetime.datetime.strftime(ticket[field], "%Y.%m.%d %H:%M")
+                chunk = datetime.datetime.strftime(ticket[field], "%Y.%m.%d %H:%M")  # MARK table datetime format
                 
             line = line + str(chunk) + delimiter
 
@@ -552,6 +563,7 @@ def selectPassenger(tickets, name) :
     print '\nPassenger selection: ' + name
     for ticket in tickets :
         if ticket['passenger'] == name :
+            # 'remove' operation causes negative spillovers in treatTextFields() :(
             selected_tickets.append(ticket)
 
     print '\tRemoved ' + str(tickets_quantity - len(selected_tickets)) + ' out of ' + str(tickets_quantity) + ' tickets.'
@@ -592,11 +604,11 @@ def dispStatistics(tickets) :
     print '\n\t\tTime differences'
     print '\t\tArr-Dep\t\tDep-Arr'
     print '----------------------------------'
-    print 'Median\t' + str(datetime.timedelta(seconds = median(diff_dep_arr),)) +'\t\t' + str(datetime.timedelta(seconds=median(diff_ord_dep)))
-    print 'Mean\t'   + str(datetime.timedelta(seconds = round(mean(diff_dep_arr),round_coeff)))   +'\t\t' + str(datetime.timedelta(seconds=round(mean(diff_ord_dep),round_coeff)))
-    print 'Std\t'  + str(datetime.timedelta(seconds = round(std(diff_dep_arr),round_coeff)))    +'\t\t' + str(datetime.timedelta(seconds=round(std(diff_ord_dep),round_coeff)))
-    print 'Min\t'  + str(datetime.timedelta(seconds = min(diff_dep_arr)))    +'\t\t' + str(datetime.timedelta(seconds=min(diff_ord_dep)))
-    print 'Max\t'  + str(datetime.timedelta(seconds = max(diff_dep_arr)))    +'\t\t' + str(datetime.timedelta(seconds=max(diff_ord_dep)))
+    print 'np.median\t' + str(datetime.timedelta(seconds = np.median(diff_dep_arr),)) +'\t\t' + str(datetime.timedelta(seconds=np.median(diff_ord_dep)))
+    print 'np.mean\t'   + str(datetime.timedelta(seconds = round(np.mean(diff_dep_arr),round_coeff)))   +'\t\t' + str(datetime.timedelta(seconds=round(np.mean(diff_ord_dep),round_coeff)))
+    print 'Std\t'  + str(datetime.timedelta(seconds = round(np.std(diff_dep_arr),round_coeff)))    +'\t\t' + str(datetime.timedelta(seconds=round(np.std(diff_ord_dep),round_coeff)))
+    print 'Min\t'  + str(datetime.timedelta(seconds = np.min(diff_dep_arr)))    +'\t\t' + str(datetime.timedelta(seconds=np.min(diff_ord_dep)))
+    print 'Max\t'  + str(datetime.timedelta(seconds = np.max(diff_dep_arr)))    +'\t\t' + str(datetime.timedelta(seconds=np.max(diff_ord_dep)))
 
 
     # Car type
@@ -654,7 +666,7 @@ def dispStatistics(tickets) :
     for metric in metric_function :
         line = metric + addTabs(metric)
         for type in car_types_set :
-            m = str(round(getattr(numpy, metric)(price_by_car_types[type]), round_coeff))
+            m = str(round(getattr(np, metric)(price_by_car_types[type]), round_coeff))
             line += m + addTabs(m)
         table += '\n' + line
     print table
@@ -683,17 +695,17 @@ def dispStatistics(tickets) :
             if r == route :
                 price_by_route[route].append(p)
 
-    print '\n\tMedian price\tRoutes'
+    print '\n\tnp.median price\tRoutes'
     print '-------------------------------'
     for h, route in route_hist_zip :
-        print str(h) + '\t' + str(round(median(price_by_route[route]), round_coeff)) + '\t\t\t' + route
+        print str(h) + '\t' + str(round(np.median(price_by_route[route]), round_coeff)) + '\t\t\t' + route
 
     arr_stations = []
     dep_stations = []
 
     # Stations
     for ticket in tickets :
-        if ticket['arrivalCity'] == u'Москва' :
+        if ticket['arrivalCity'] == u'Москва' :   # MARK Stats city stations
             arr_stations.append(ticket['arrivalStation'])
         if ticket['departureCity'] == u'Москва' :
             dep_stations.append(ticket['departureStation'])
@@ -711,6 +723,7 @@ def dispStatistics(tickets) :
     for h, v in dep_stations_zip :
         print str(h) + '\t' + v
 
+
 # MAIN
 
 def main(args) :
@@ -722,7 +735,7 @@ def main(args) :
 
     argn = len(args)
     keys_help = ['-h', '--help']
-    keys_acc = ['-a', '--acc']
+    keys_acc =  ['-a', '--acc']
     keys_load = ['-l', '--load']
     keys_save = ['-s', '--save']
     keys_disp = ['-d', '--disp']
@@ -837,9 +850,9 @@ def main(args) :
 
     if current_arg + 1 <= argn :
         if args[current_arg] in keys_name :
-            name = args[current_arg + 1]
+            name = args[current_arg + 1] # MARK Default passenger
             if not name == 'any' :
-                tickets = selectPassenger(tickets, name)
+                tickets = selectPassenger(tickets, name)  
                 current_arg += 2
 
 
@@ -904,4 +917,3 @@ def main(args) :
                 sys.exit()
 
 main(sys.argv)
-
