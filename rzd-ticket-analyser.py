@@ -5,30 +5,26 @@ __author__  = 'Andrew ks1v Kiselev'
 __email__   = "mail@andrewkiselev.com"
 __year__    = "2012"
 __title__   = "RZD tickets analyser"
-__version__ = '2 beta'
+__version__ = '2.0'
 
 
-import httplib2                 # Downloading
-from urllib import urlencode    # Downloading
-import datetime                 # Parsing, Statistic
-from re import finditer, escape # Parsing
-import string                   # Parsing
-from hashlib import md5         # Serialization
-from pickle  import dump, load  # Serialization
-import os                       # DeSerialization
-import numpy as np              # Statistic
-import sys                      # Commands parsing
-import ConfigParser             # Configuration file
+from httplib2   import Http                 # Downloading
+from urllib     import urlencode            # Downloading
+from datetime   import datetime, timedelta  # Parsing, Statistic
+from re         import finditer, escape     # Parsing
+from string     import find                 # Parsing
+from hashlib    import md5                  # Serialization
+from pickle     import dump, load           # Serialization
+import os                                   # DeSerialization
+import numpy                                # Statistic
+import sys                                  # Commands parsing
+import ConfigParser                         # Configuration file
 
 
 # == Next ==
 # TODO Pickel replacement
 # TODO Exceptions
 # TODO Testing - Accounts
-
-#Sample config
-#Help
-#Import
 
 
 # CONFIG
@@ -71,7 +67,7 @@ def rzdAuth(login, password, cfg) :
                   "action"     : "Вход"}
 
     # HTTP object creation
-    http = httplib2.Http(disable_ssl_certificate_validation = True)
+    http = Http(disable_ssl_certificate_validation = True)
 
     # Authentication
     print "Login as " + login + '.'
@@ -93,8 +89,8 @@ def nextCabinetPageURLPosition(cabinet_page, cfg) :
         returns numerical position of the next cabinet page or -1 o/w
     """
 
-    mark_position = string.find(cabinet_page, cfg['current_page_mark'])
-    next_page_position = string.find(cabinet_page, cfg['next_page_url_mark'], mark_position)
+    mark_position = find(cabinet_page, cfg['current_page_mark'])
+    next_page_position = find(cabinet_page, cfg['next_page_url_mark'], mark_position)
     return next_page_position
 
 def nextCabinetPageURLExtraction(cabinet_page, next_page_url_position, cfg) :
@@ -104,7 +100,7 @@ def nextCabinetPageURLExtraction(cabinet_page, next_page_url_position, cfg) :
     """
 
     start_pos = next_page_url_position
-    end_pos = start_pos + string.find(cabinet_page[start_pos : start_pos + 200], cfg['next_page_url_end_mark'])
+    end_pos = start_pos + find(cabinet_page[start_pos : start_pos + 200], cfg['next_page_url_end_mark'])
     next_page_url = cabinet_page[start_pos : end_pos]
 
     # httplib2 understands only absolute URLs
@@ -164,7 +160,7 @@ def ticketURLsExtraction(page, ticket_urls_positions, cfg) :
     """
     ticket_urls = []
     for start_pos in ticket_urls_positions :
-        end_pos = start_pos + string.find(page[start_pos : start_pos + 300], cfg['ticket_url_end_mark']) - 2 #FIXME Remove shift
+        end_pos = start_pos + find(page[start_pos : start_pos + 300], cfg['ticket_url_end_mark']) - 2 #FIXME Remove shift
         ticket_url = page[start_pos : end_pos]
         ticket_urls.append(ticket_url)
 
@@ -426,7 +422,7 @@ def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
         for mark in marks :
             # Searching for special mark that corresponds to desired data
             # Position of the mark/label
-            mark_pos = string.find(ticket_page, mark[0])
+            mark_pos = find(ticket_page, mark[0])
 
             # Fixed length data
             if str.isdigit(mark[1]) and str.isdigit(mark[2]) :
@@ -437,9 +433,9 @@ def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
 
                 # Converting data to non-string types
                 if mark[3] == 'date' :
-                    chunk = datetime.datetime.strptime(chunk,"%d.%m.%Y&nbsp;%H:%M")   # to datetime object
+                    chunk = datetime.strptime(chunk,"%d.%m.%Y&nbsp;%H:%M")   # to datetime object
                     #chunk = time.strptime(chunk,"%d.%m.%Y&nbsp;%H:%M")                # time object doesnt support subtracting
-                    #chunk = datetime.datetime.strftime("%Y.%m.%d %H:%M", chunk)       # to string
+                    #chunk = datetime.strftime("%Y.%m.%d %H:%M", chunk)       # to string
                 elif mark[3] == 'int' :
                     chunk = int(chunk)
 
@@ -448,22 +444,22 @@ def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
             # Variable length data
             elif mark[0] == marks[3][0] :   # Route
                 start_pos = mark_pos + int(mark[1])
-                end_pos = start_pos + string.find( ticket_page[mark_pos + int(mark[1]) : mark_pos + 200], mark[2])
+                end_pos = start_pos + find( ticket_page[mark_pos + int(mark[1]) : mark_pos + 200], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
 
-                middle_pos = string.find(chunk, cfg['route_middle_mark'])
+                middle_pos = find(chunk, cfg['route_middle_mark'])
                 ticket[mark[4][0]] = chunk[0 : middle_pos]                                          #departureCity
                 ticket[mark[4][1]] = chunk[middle_pos + len(cfg['route_middle_mark']) : len(chunk)] #arrivalCity
 
             elif mark[0] == marks[7][0] :     # Car Type
                 start_pos = mark_pos + int(mark[1])
-                end_pos = start_pos + string.find(ticket_page[mark_pos + int(mark[1]) : mark_pos + 150], mark[2])
+                end_pos = start_pos + find(ticket_page[mark_pos + int(mark[1]) : mark_pos + 150], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
                 ticket[mark[4]] = chunk
 
             elif mark[0] == marks[9][0] :    # Price
                 start_pos = mark_pos + int(mark[1])
-                end_pos = start_pos + string.find(ticket_page[mark_pos + int(mark[1]) : mark_pos + 100], mark[2] ) - 9
+                end_pos = start_pos + find(ticket_page[mark_pos + int(mark[1]) : mark_pos + 100], mark[2] ) - 9
                 chunk = ticket_page[start_pos : end_pos]
                 # Replacing of decimal comma with point
                 # Cannot cast string '565.54' directly to int
@@ -472,9 +468,9 @@ def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
             elif mark[0] == marks[10][0] :    # Passenger
                 # Position of the passenger's name depends on ticket price's position
                 price = str(ticket['price'])
-                price_pos = string.find(ticket_page, price)     # Too weak, price - just a three or four digit number
-                start_pos = string.find(ticket_page[price_pos : price_pos + 20], cfg['passenger_end_mark']) + price_pos + len(cfg['passenger_end_mark']) 
-                end_pos = start_pos + string.find(ticket_page[start_pos : start_pos + 50], mark[2])
+                price_pos = find(ticket_page, price)     # Too weak, price - just a three or four digit number
+                start_pos = find(ticket_page[price_pos : price_pos + 20], cfg['passenger_end_mark']) + price_pos + len(cfg['passenger_end_mark']) 
+                end_pos = start_pos + find(ticket_page[start_pos : start_pos + 50], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
                 ticket[mark[4]] = chunk
 
@@ -539,7 +535,7 @@ def formTable(tickets, cfg) :
                 chunk = ticket[field].encode('utf-8', 'ignore')
 
             if field.endswith('Datetime') :
-                chunk = datetime.datetime.strftime(ticket[field], cfg['datetime_format'])  
+                chunk = datetime.strftime(ticket[field], cfg['datetime_format'])  
                 
             line = line + str(chunk) + delimiter
 
@@ -613,16 +609,16 @@ def dispStatistics(tickets, cfg) :
     print '\n\t\tTime differences'
     print '\t\tArr-Dep\t\tDep-Arr'
     print '----------------------------------'
-    print 'Median\t\t' + str(datetime.timedelta(seconds = np.median(diff_dep_arr))) \
-                       + '\t\t' + str(datetime.timedelta(seconds=np.median(diff_ord_dep)))
-    print 'Mean\t\t'   + str(datetime.timedelta(seconds = round(np.mean(diff_dep_arr), round_k))) \
-                       + '\t\t' + str(datetime.timedelta(seconds=round(np.mean(diff_ord_dep), round_k)))
-    print 'Std\t\t'    + str(datetime.timedelta(seconds = round(np.std(diff_dep_arr), round_k))) \
-                       + '\t\t' + str(datetime.timedelta(seconds=round(np.std(diff_ord_dep), round_k)))
-    print 'Min\t\t'    + str(datetime.timedelta(seconds = np.min(diff_dep_arr))) \
-                       + '\t\t' + str(datetime.timedelta(seconds=np.min(diff_ord_dep)))
-    print 'Max\t\t'    + str(datetime.timedelta(seconds = np.max(diff_dep_arr))) \
-                       + '\t\t' + str(datetime.timedelta(seconds=np.max(diff_ord_dep)))
+    print 'Median\t\t' + str(timedelta(seconds = numpy.median(diff_dep_arr))) \
+                       + '\t\t' + str(timedelta(seconds = numpy.median(diff_ord_dep)))
+    print 'Mean\t\t'   + str(timedelta(seconds = round(numpy.mean(diff_dep_arr), round_k))) \
+                       + '\t\t' + str(timedelta(seconds = round(numpy.mean(diff_ord_dep), round_k)))
+    print 'Std\t\t'    + str(timedelta(seconds = round(numpy.std(diff_dep_arr), round_k))) \
+                       + '\t\t' + str(timedelta(seconds = round(numpy.std(diff_ord_dep), round_k)))
+    print 'Min\t\t'    + str(timedelta(seconds = numpy.min(diff_dep_arr))) \
+                       + '\t\t' + str(timedelta(seconds = numpy.min(diff_ord_dep)))
+    print 'Max\t\t'    + str(timedelta(seconds = max(diff_dep_arr))) \
+                       + '\t\t' + str(timedelta(seconds = numpy.max(diff_ord_dep)))
 
 
     # Car type
@@ -665,7 +661,7 @@ def dispStatistics(tickets, cfg) :
     for metric in metric_function :
         line = metric + addTabs(metric)
         for ctype in car_types_set :
-            m = str(round(getattr(np, metric)(price_by_car_types[ctype]), round_k))
+            m = str(round(getattr(numpy, metric)(price_by_car_types[ctype]), round_k))
             line += m + addTabs(m)
         table += '\n' + line
     print table
@@ -691,10 +687,10 @@ def dispStatistics(tickets, cfg) :
             if r == route :
                 price_by_route[route].append(p)
 
-    print '\n\tMedian price\tRoutes'
+    print '\n\tnumpy.median price\tRoutes'
     print '-------------------------------'
     for h, route in route_hist_zip :
-        print str(h) + '\t' + str(round(np.median(price_by_route[route]), round_k)) + '\t\t\t' + route
+        print str(h) + '\t' + str(round(numpy.median(price_by_route[route]), round_k)) + '\t\t\t' + route
 
     arr_stations = []
     dep_stations = []
@@ -731,7 +727,7 @@ def main(args) :
     cfg_name = 'rzd-ticket-analyser.cfg'
     cfg_defualt_path = './' + cfg_name
     cfg = getOptions(cfg_defualt_path)
-
+    
     argn = len(args)
     
     print args
@@ -748,7 +744,6 @@ def main(args) :
 
     program_name = args[0][2 : len(args[0])]
 
-    # FIXME Rewrite help
     help_text = '\nNAME'                                                                                      \
                 '\n\t' + program_name + ' provides an overview and statistics of travels by Russian Railways.' \
                                                                                                                 \
@@ -772,7 +767,7 @@ def main(args) :
                 '\n\n\tOption. All the user options and most of program ones are stored in config file'                  \
                 '\n\t' + cfg_name + ', in which you ought to place login and password of your RZD account. '            \
                 "\n\tAlso it's avalible to set passenger's last name  for tickets' filtration or CSV table options,"   \
-                "\n\tsuch as date and time format, fields' delimiter and saving path."                                \
+                "\n\tsuch as date and time format, fields' delimiter and saving os.path."                                \
                                                                                                                      \
                 '\n\nEXAMPLES'                                                                                      \
                 "\n\t" + program_name + " -a"                                                                      \
