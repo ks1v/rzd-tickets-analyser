@@ -6,8 +6,8 @@ import os
 #os.system('rm -rf ./../tickets')  
 
 test_commands = []
-test_commands.append('-a -s pages -s tickets -s table -d all') 
-test_commands.append('-l pages') # Display table and stats
+test_commands.append('-a -s pages -s tickets -s table -d table') 
+#test_commands.append('-l pages') # Display table and stats
 test_commands.append('-l tickets -d table') 
 
 

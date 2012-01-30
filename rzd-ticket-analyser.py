@@ -20,9 +20,7 @@ import numpy                                # Statistic
 import sys                                  # Commands parsing
 import ConfigParser                         # Configuration file
 
-
 # == Next ==
-# TODO Pickel replacement
 # TODO Exceptions
 # TODO Testing - Accounts
 
@@ -32,7 +30,7 @@ import ConfigParser                         # Configuration file
 def getOptions(path) :
     """
     getOptions(path)   
-        reads options from config file using ConfigParser module
+        read options from config file using ConfigParser module
         returns dict of options
     """ 
     # TODO Handle file errors
@@ -52,7 +50,7 @@ def getOptions(path) :
 def rzdAuth(login, password, cfg) :   
     """
     rzdAuth(login, password)
-        returns [http, headers]
+        return [http, headers]
             http - http object
             headers - headers with cookies
     """
@@ -309,7 +307,6 @@ def saveTickets(tickets, path = './tickets.pkl') :
         nothing to return
     """
     # TODO Handle file errors
-    # TODO Replace pickle
     fd = open(path, 'w')
     dump(tickets, fd)
     fd.close()
@@ -322,7 +319,6 @@ def loadTickets(path = './tickets.pkl') :
         returns tickets as a list of dicts
     """
     # TODO Handle file errors
-    # TODO Replace pickle
     fd = open(path, 'r')
     tickets = load(fd)
     fd.close()
