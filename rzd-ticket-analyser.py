@@ -13,8 +13,8 @@ from urllib import urlencode    # Downloading
 import datetime                 # Parsing, Statistic
 from re import finditer, escape # Parsing
 import string                   # Parsing
-import hashlib                  # Serialization
-import pickle                   # Serialization
+from hashlib import md5         # Serialization
+from pickle  import dump, load  # Serialization
 import os                       # DeSerialization
 import numpy as np              # Statistic
 import sys                      # Commands parsing
@@ -22,10 +22,13 @@ import ConfigParser             # Configuration file
 
 
 # == Next ==
-# TODO Sample config
 # TODO Pickel replacement
 # TODO Exceptions
 # TODO Testing - Accounts
+
+#Sample config
+#Help
+#Import
 
 
 # CONFIG
@@ -278,7 +281,7 @@ def saveTicketPages(ticket_pages, path = './ticket_pages') :
 
     for item in ticket_pages :
         # TODO Handle file errors
-        fd = open(path + str(hashlib.md5(item).hexdigest()) + '.html', 'w')
+        fd = open(path + str(md5(item).hexdigest()) + '.html', 'w')
         fd.write(item)
         fd.close()
 
@@ -312,7 +315,7 @@ def saveTickets(tickets, path = './tickets.pkl') :
     # TODO Handle file errors
     # TODO Replace pickle
     fd = open(path, 'w')
-    pickle.dump(tickets, fd)
+    dump(tickets, fd)
     fd.close()
     print "\nTickets are saved as a file in " + path
 
@@ -325,7 +328,7 @@ def loadTickets(path = './tickets.pkl') :
     # TODO Handle file errors
     # TODO Replace pickle
     fd = open(path, 'r')
-    tickets = pickle.load(fd)
+    tickets = load(fd)
     fd.close()
     print '\nTickets loaded from ' + path
     return tickets
@@ -606,15 +609,20 @@ def dispStatistics(tickets, cfg) :
         diff_ord_dep.append((ticket['departureDatetime'] - ticket['orderDatetime']).total_seconds())
         diff_dep_arr.append((ticket['arrivalDatetime'] - ticket['departureDatetime']).total_seconds())
 
-    round_coeff = 0
+    round_k = 0
     print '\n\t\tTime differences'
     print '\t\tArr-Dep\t\tDep-Arr'
     print '----------------------------------'
-    print 'Median\t\t' + str(datetime.timedelta(seconds = np.median(diff_dep_arr),)) +'\t\t' + str(datetime.timedelta(seconds=np.median(diff_ord_dep)))
-    print 'Mean\t\t'   + str(datetime.timedelta(seconds = round(np.mean(diff_dep_arr), round_coeff)))   +'\t\t' + str(datetime.timedelta(seconds=round(np.mean(diff_ord_dep),round_coeff)))
-    print 'Std\t\t'  + str(datetime.timedelta(seconds = round(np.std(diff_dep_arr), round_coeff)))    +'\t\t' + str(datetime.timedelta(seconds=round(np.std(diff_ord_dep),round_coeff)))
-    print 'Min\t\t'  + str(datetime.timedelta(seconds = np.min(diff_dep_arr)))    +'\t\t' + str(datetime.timedelta(seconds=np.min(diff_ord_dep)))
-    print 'Max\t\t'  + str(datetime.timedelta(seconds = np.max(diff_dep_arr)))    +'\t\t' + str(datetime.timedelta(seconds=np.max(diff_ord_dep)))
+    print 'Median\t\t' + str(datetime.timedelta(seconds = np.median(diff_dep_arr))) \
+                       + '\t\t' + str(datetime.timedelta(seconds=np.median(diff_ord_dep)))
+    print 'Mean\t\t'   + str(datetime.timedelta(seconds = round(np.mean(diff_dep_arr), round_k))) \
+                       + '\t\t' + str(datetime.timedelta(seconds=round(np.mean(diff_ord_dep), round_k)))
+    print 'Std\t\t'    + str(datetime.timedelta(seconds = round(np.std(diff_dep_arr), round_k))) \
+                       + '\t\t' + str(datetime.timedelta(seconds=round(np.std(diff_ord_dep), round_k)))
+    print 'Min\t\t'    + str(datetime.timedelta(seconds = np.min(diff_dep_arr))) \
+                       + '\t\t' + str(datetime.timedelta(seconds=np.min(diff_ord_dep)))
+    print 'Max\t\t'    + str(datetime.timedelta(seconds = np.max(diff_dep_arr))) \
+                       + '\t\t' + str(datetime.timedelta(seconds=np.max(diff_ord_dep)))
 
 
     # Car type
@@ -657,7 +665,7 @@ def dispStatistics(tickets, cfg) :
     for metric in metric_function :
         line = metric + addTabs(metric)
         for ctype in car_types_set :
-            m = str(round(getattr(np, metric)(price_by_car_types[ctype]), round_coeff))
+            m = str(round(getattr(np, metric)(price_by_car_types[ctype]), round_k))
             line += m + addTabs(m)
         table += '\n' + line
     print table
@@ -686,7 +694,7 @@ def dispStatistics(tickets, cfg) :
     print '\n\tMedian price\tRoutes'
     print '-------------------------------'
     for h, route in route_hist_zip :
-        print str(h) + '\t' + str(round(np.median(price_by_route[route]), round_coeff)) + '\t\t\t' + route
+        print str(h) + '\t' + str(round(np.median(price_by_route[route]), round_k)) + '\t\t\t' + route
 
     arr_stations = []
     dep_stations = []
@@ -717,22 +725,22 @@ def dispStatistics(tickets, cfg) :
 def main(args) :
     """
     main(args)
-        realizes command line UI. 
+        realize command line UI;
         to display help message use '-h'
     """
-
-    cfg_defualt_path = './../sys.cfg'
+    cfg_name = 'rzd-ticket-analyser.cfg'
+    cfg_defualt_path = './' + cfg_name
     cfg = getOptions(cfg_defualt_path)
 
     argn = len(args)
     
     print args
     
-    keys_help = ['-h', '--help'] # No
-    keys_acc =  ['-a', '--acc']  # Yes
-    keys_load = ['-l', '--load'] # Yes
-    keys_save = ['-s', '--save'] # Yes
-    keys_disp = ['-d', '--disp'] # No
+    keys_help = ['-h', '--help']
+    keys_acc =  ['-a', '--acc']
+    keys_load = ['-l', '--load']
+    keys_save = ['-s', '--save']
+    keys_disp = ['-d', '--disp']
     keys_lic  = ['--lic']
 
     def strKeys(k) :
@@ -741,42 +749,49 @@ def main(args) :
     program_name = args[0][2 : len(args[0])]
 
     # FIXME Rewrite help
-    help_text = '\nNAME' \
-                '\n\t' + program_name + ' provides an overview and useful statistics of your travels by Russian Railways.' \
-                \
-                '\n\nSYNOPSIS ' \
-                '\n\t' + program_name + ' {source} [{filter}] [{output}]' \
-                \
-                '\n\nDESCRIPTION' \
-                '\n\n\tSource of the ticket data.'\
-                '\n\t\t{source}:'\
-                '\n\t\t\t' + strKeys(keys_acc)  + '\t{login}' + '\t{password}' + '\t- your RZD account;' \
-                '\n\t\t\t' + strKeys(keys_load) + '\tpages'   + '\t{path}'     + '\t\t- pre-saved html-pages of tickets from your account;' \
-                '\n\t\t\t' + strKeys(keys_load) + '\ttickets' + '\t{path}'     + '\t\t- per-serialized tickets data;' \
-                "\n\n\tFilter tickets by passenger's last name. Optional (default: any passenger ( = --name any))."\
-                '\n\t\t{filter}:'\
-                '\n\t\t\t' + strKeys(keys_disp) + '\tstats'   + '\t\t- display ticket statistics;' \
-                '\n\t\t\t' + strKeys(keys_disp) + '\ttable'   + '\t\t- display table of tickets;' \
-                '\n\t\t\t' + strKeys(keys_disp) + '\tall'     + '\t\t- display table of ticket and statistics;' \
-                '\n\t\t\t' + strKeys(keys_save) + '\tpages'   + '\t{path}' + '\t- save ticket pages from your account one by one in {path} folder;' \
-                '\n\t\t\t' + strKeys(keys_save) + '\ttickets' + '\t{path}' + '\t- save tickets in pickle file by given path;' \
-                '\n\t\t\t' + strKeys(keys_save) + '\ttable'   + '\t{path}' + '\t- save table of tickets as CSV file.' \
-                \
-                '\n\nEXAMPLES' \
-                "\n\t" + program_name + " --account {username} {password} " \
-                "\n\t\t\t- gets tickets from your RZD account and shows you tickets' table and statistics; \n" \
-                "\n\t" + program_name + " --load tickets ./tickets.pkl --name Smith --disp table --save table ./tickets.csv " \
-                "\n\t\t\t- gets tickets from pre-saved file of tickets' data, shows you tickets' table and save the table as CSV file. " \
-                \
-                '\n\nAUTHOR' \
-                '\n\tAndrew «ks1v» Kiselev' \
-                '\n\tmail@andrewkiselev.com' \
-                '\n\thttp://andrewkiselev.com' \
-                '\n\thttp://twitter.com/ks1v'\
-                \
-                '\n\nREPORTING BUGS' \
-                '\n\tSubmit new issue: \thttps://bitbucket.org/ks1v/rzd-tickets-analyser/issues/new' \
-                '\n\tProject repo: \t\thttps://bitbucket.org/ks1v/rzd-tickets-analyser' \
+    help_text = '\nNAME'                                                                                      \
+                '\n\t' + program_name + ' provides an overview and statistics of travels by Russian Railways.' \
+                                                                                                                \
+                '\n\nSYNOPSIS '                                                                                  \
+                '\n\t' + program_name + ' {source} [{filter}] [{output}]'                                         \
+                                                                                                                   \
+                '\n\nDESCRIPTION'                                                                                   \
+                '\n\n\tSource of the ticket data.'                                                                   \
+                '\n\t\t{source}:'                                                                                     \
+                '\n\t\t\t' + strKeys(keys_acc)  + '\t\t- your RZD account;'                                            \
+                '\n\t\t\t' + strKeys(keys_load) + '\tpages'   + '\t- pre-saved html-pages of tickets from your account;'\
+                '\n\t\t\t\t'                    + '\ttickets' + '\t- per-serialized tickets data.'                       \
+                '\n\n\tWay of output. Optional (default: display table and statistics ( = --disp all)).'                  \
+                '\n\t\t{output}:'                                                                                          \
+                '\n\t\t\t' + strKeys(keys_disp) + '\tstats'   + '\t- display ticket statistics;'                            \
+                '\n\t\t\t\t'                    + '\ttable'   + '\t- display table of tickets;'                              \
+                '\n\t\t\t\t'                    + '\tall'     + '\t- display table of ticket and statistics;'                \
+                '\n\t\t\t' + strKeys(keys_save) + '\tpages'   + '\t- save ticket pages from your account in separated file;'\
+                '\n\t\t\t\t'                    + '\ttickets' + '\t- save tickets in pickle file;'                         \
+                '\n\t\t\t\t'                    + '\ttable'   + '\t- save table of tickets as CSV file.'                  \
+                '\n\n\tOption. All the user options and most of program ones are stored in config file'                  \
+                '\n\t' + cfg_name + ', in which you ought to place login and password of your RZD account. '            \
+                "\n\tAlso it's avalible to set passenger's last name  for tickets' filtration or CSV table options,"   \
+                "\n\tsuch as date and time format, fields' delimiter and saving path."                                \
+                                                                                                                     \
+                '\n\nEXAMPLES'                                                                                      \
+                "\n\t" + program_name + " -a"                                                                      \
+                "\n\t\t\t- get tickets from your RZD account and shows you tickets' table and statistics;"        \
+                "\n\t\t\t  this is the easiest way to view numbers,"                                             \
+                "\n\t\t\t  just put your login and password into "+ cfg_name + ";\n"                            \
+                "\n\t" + program_name + " -l tickets -d table -s table"                                        \
+                "\n\t\t\t- get tickets from pre-saved file of tickets' data, shows you tickets' table and"    \
+                "\n\t\t\t  save the table as CSV file."                                                      \
+                                                                                                            \
+                '\n\nAUTHOR'                                                                               \
+                '\n\tAndrew «ks1v» Kiselev'                                                               \
+                '\n\tmail@andrewkiselev.com'                                                             \
+                '\n\thttp://andrewkiselev.com'                                                          \
+                '\n\thttp://twitter.com/ks1v'                                                          \
+                                                                                                      \
+                '\n\nREPORTING BUGS'                                                                 \
+                '\n\tSubmit new issue: \thttps://bitbucket.org/ks1v/rzd-tickets-analyser/issues/new'\
+                '\n\tProject repo: \t\thttps://bitbucket.org/ks1v/rzd-tickets-analyser'            \
                 '\n\tProject page: \t\thttp://andrewkiselev.com/rzd-tickets-analyser'
                  
 
@@ -811,18 +826,18 @@ def main(args) :
         current_arg = 3
 
         if content == 'pages' :
-            if not os.path.isdir(cfg['path_pages']) :
+            if not os.path.isdir(cfg['path_dir'] + cfg['path_pages']) :
                 print '\nERROR! There is no such directory.'
                 sys.exit()
-            ticket_pages = loadTicketPages(cfg['path_pages'])
+            ticket_pages = loadTicketPages(cfg['path_dir'] + cfg['path_pages'])
             tickets = parseTicketPages(ticket_pages, cfg)
             tickets = treatTextFields(tickets, cfg)
 
         elif content == 'tickets' :
-            if not os.path.isfile(cfg['path_tickets']) :
+            if not os.path.isfile(cfg['path_dir'] + cfg['path_tickets']) :
                 print '\nERROR! There is no such file.'
                 sys.exit()
-            tickets = loadTickets(cfg['path_tickets'])
+            tickets = loadTickets(cfg['path_dir'] + cfg['path_tickets'])
 
         else :
             print '\nERROR! Unexpected content to load'
