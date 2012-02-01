@@ -5,7 +5,7 @@ __author__  = 'Andrew ks1v Kiselev'
 __email__   = "mail@andrewkiselev.com"
 __year__    = "2012"
 __title__   = "RZD tickets analyser"
-__version__ = '2.1'
+__version__ = '2.2'
 
 
 from httplib2   import Http                 # Downloading
@@ -15,15 +15,13 @@ from re         import finditer, escape     # Parsing
 from string     import find                 # Parsing
 from hashlib    import md5                  # Serialization
 from pickle     import dump, load           # Serialization
-import os                                   # DeSerialization
 import numpy                                # Statistic
+import os                                   # DeSerialization
 import sys                                  # Commands parsing
 import ConfigParser                         # Configuration file
 
 # == Next ==
-# TODO Exceptions
 # TODO Testing - Accounts
-
 
 # CONFIG
 
@@ -33,16 +31,26 @@ def getConfig(path) :
         read options from config file using ConfigParser module
         returns dict of options
     """ 
-    # TODO Handle file errors
-    options = {}
-    config = ConfigParser.ConfigParser()
-    config.read(path)
+    try: 
+        config = ConfigParser.ConfigParser()
+        with open(path, 'r') as fd :
+            config.readfp(fd)
+    except IOError :
+        print "ERROR! Cannot load config from " + path + "!\n"
+        sys.exit()
+    except ConfigParser.Error :
+        print "ERROR! Some ConfigParser error.\n"
+        sys.exit()
+    else :
+        print '\nConfig loaded\n'
+            
     
+    cfg = {}
     for section in config.sections() :
         for option in config.options(section) :
-            options[option] = config.get(section, option)
+            cfg[option] = config.get(section, option)
             
-    return options
+    return cfg
         
         
 def checkConfig(cfg) :
@@ -50,17 +58,18 @@ def checkConfig(cfg) :
     checkConfig(cfg)
         check config dict for errors 
     """
-    # TODO checkOptions
     
     if not type(cfg) == type({}) :
         print 'ERROR! Config variable is not a dictionary!'
         sys.exit()
     
-    mandatory_list = ['login', 'password', 'delimiter', 'datetime_format', 'default_city', 
-                      'default_passenger', 'path_dir', 'path_pages', 'path_tickets', 'path_table', 
-                      'host', 'auth_page', 'error_page', 'current_page_mark', 'next_page_url_mark', 
-                      'next_page_url_end_mark', 'cabinet_url', 'ticket_url_mark', 
-                      'ticket_url_end_mark', 'passenger_end_mark', 'route_middle_mark']
+    mandatory_list = ['login', 'password', 'delimiter', 'datetime_format', 
+                      'default_city', 'default_passenger', 'path_dir', 
+                      'path_pages', 'path_tickets', 'path_table', 'host', 
+                      'auth_page', 'error_page', 'current_page_mark', 
+                      'next_page_url_mark', 'next_page_url_end_mark', 
+                      'cabinet_url', 'ticket_url_mark', 'ticket_url_end_mark', 
+                      'passenger_end_mark', 'route_middle_mark']
  
     cfg_fields = set(cfg.keys())
     mandatory_set = set(mandatory_list)
@@ -68,19 +77,19 @@ def checkConfig(cfg) :
     
     if diff :
         # diff isn't empty => not all field are filled'
-        print "ERROR! Not all mandatory fields of the config are filled. Missing fields: " 
+        print "ERROR! Not all mandatory fields of the config are filled." 
+        print "Missing fields: " 
         for it in diff : print '\t- ' + str(it)
         sys.exit()
-                        
-                        
                         
                         
 
 # SITE
 
-def rzdAuth(login, password, cfg) :   
+def rzdAuth(cfg) :   
     """
-    rzdAuth(login, password)
+    rzdAuth(cfg)
+        cfg — dict with 'login' and 'password' fields
         return [http, headers]
             http - http object
             headers - headers with cookies
@@ -89,8 +98,8 @@ def rzdAuth(login, password, cfg) :
     auth_page  = cfg['host'] + cfg['auth_page']  
     error_page = cfg['host'] + cfg['error_page']  
     headers = {'Content-type': 'application/x-www-form-urlencoded'}
-    auth_form = { "j_username" : login,
-                  "j_password" : password,
+    auth_form = { "j_username" : cfg['login'],
+                  "j_password" : cfg['password'],
                   "action.x"   : "53",
                   "action.y"   : "10",
                   "action"     : "Вход"}
@@ -99,8 +108,9 @@ def rzdAuth(login, password, cfg) :
     http = Http(disable_ssl_certificate_validation = True)
 
     # Authentication
-    print "Login as " + login + '.'
-    response = http.request(auth_page, "POST", headers = headers, body = urlencode(auth_form))
+    print "Login as " + cfg['login'] + '.'
+    response = http.request(auth_page, "POST", headers = headers, \
+                                                body = urlencode(auth_form))
     
     if response[0]['location'] == error_page :
         print "\tAuthentication Failed."
@@ -118,18 +128,19 @@ def nextCabinetPageURLPosition(cabinet_page, cfg) :
         returns numerical position of the next cabinet page or -1 o/w
     """
 
-    mark_position = find(cabinet_page, cfg['current_page_mark'])
-    next_page_position = find(cabinet_page, cfg['next_page_url_mark'], mark_position)
-    return next_page_position
+    mark_pos = find(cabinet_page, cfg['current_page_mark'])
+    next_page_pos = find(cabinet_page, cfg['next_page_url_mark'], mark_pos)
+    return next_page_pos
 
-def nextCabinetPageURLExtraction(cabinet_page, next_page_url_position, cfg) :
+def nextCabinetPageURLExtraction(cabinet_page, next_page_url_pos, cfg) :
     """
-    nextCabinetPageURLExtraction(cabinet_page, next_page_url_position)
+    nextCabinetPageURLExtraction(cabinet_page, next_page_url_pos)
         returns URL of the next cabinet page
     """
 
-    start_pos = next_page_url_position
-    end_pos = start_pos + find(cabinet_page[start_pos : start_pos + 200], cfg['next_page_url_end_mark'])
+    start_pos = next_page_url_pos
+    end_pos = start_pos + find(cabinet_page[start_pos : start_pos + 200], \
+                cfg['next_page_url_end_mark'])
     next_page_url = cabinet_page[start_pos : end_pos]
 
     # httplib2 understands only absolute URLs
@@ -142,7 +153,7 @@ def nextCabinetPageURLExtraction(cabinet_page, next_page_url_position, cfg) :
 def getTicketURLs(http, headers, cfg) :
     """
     getTicketURLs(http, headers)
-        returns list of URLs of tickets from pre-authorized account ('http', 'headers')
+        returns list of URLs of tickets from the account ('http', 'headers')
     """
 
     ticket_urls = []
@@ -152,7 +163,8 @@ def getTicketURLs(http, headers, cfg) :
         print "\nCabinet page is found at ", cfg['cabinet_url']
 
         # Fetch new cabinet page
-        response, cabinet_page = http.request(cfg['cabinet_url'], "GET", headers = headers)
+        response, cabinet_page = http.request(cfg['cabinet_url'], "GET", \
+                                                        headers = headers)
         print "\tRequest... " + response['status'] + '.'
 
         # Tickets existence check
@@ -165,18 +177,20 @@ def getTicketURLs(http, headers, cfg) :
             print "\tFound " + str(len(urls_tickets_positions))+" tickets."
 
             # Extraction tickets' URLs
-            ticket_urls.extend(ticketURLsExtraction(cabinet_page, urls_tickets_positions, cfg))
+            ticket_urls.extend(ticketURLsExtraction(cabinet_page, 
+                                                urls_tickets_positions, cfg))
 
             # Next cabinet page url searching
 
-            next_page_url_position = nextCabinetPageURLPosition(cabinet_page, cfg)
+            next_page_url_pos = nextCabinetPageURLPosition(cabinet_page, cfg)
 
-            if next_page_url_position == -1 :
-                print "\nThere's no next cabinet page here ;)"
+            if next_page_url_pos == -1 :
+                # No more cabinet pages
                 break
             else :
                 # Next cabinet page url extraction
-                cfg['cabinet_url'] = nextCabinetPageURLExtraction(cabinet_page, next_page_url_position, cfg)
+                cfg['cabinet_url'] = nextCabinetPageURLExtraction(cabinet_page,\
+                                                        next_page_url_pos, cfg)
 
     print "\nFound " + str(len(ticket_urls)) + " ticket URLs."
     return ticket_urls
@@ -184,12 +198,13 @@ def getTicketURLs(http, headers, cfg) :
 def ticketURLsExtraction(page, ticket_urls_positions, cfg) :
     """
     ticketURLsExtraction(page, ticket_urls_positions)
-        extracts tickets' URLs from the 'page' using its positions 'ticket_urls_positions'
+        extracts tickets' URLs from the 'page' using its positions
         returns list of ticket URLs
     """
     ticket_urls = []
     for start_pos in ticket_urls_positions :
-        end_pos = start_pos + find(page[start_pos : start_pos + 300], cfg['ticket_url_end_mark']) - 2 #FIXME Remove shift
+        end_pos = start_pos + find(page[start_pos : start_pos + 300], 
+                                                    cfg['ticket_url_end_mark'])
         ticket_url = page[start_pos : end_pos]
         ticket_urls.append(ticket_url)
 
@@ -199,7 +214,7 @@ def getTicketPagesByURL(http, headers, ticket_urls, cfg) :
     """
     getTicketPages(http, headers, ticket_urls)
         returns list of pages with ticket data inside
-        using list of ticket URLs ('ticket_urls') from pre-authorized account ('http', 'headers')
+        using list of ticket URLs ('ticket_urls') from pre-authorized account
     """
 
     print "\nStart tickets fetching.\n"
@@ -215,24 +230,25 @@ def getTicketPagesByURL(http, headers, ticket_urls, cfg) :
         # Fetching ticket page
         response, ticket_page = http.request(url, "GET", headers = headers)
 
-        print "\tTicket fetched at " + url + " with status " + response['status'] + "."
+        print "\t" + url + ", status - " + response['status'] + "."
 
         # if page really fetched => store it
         if response['status'] == '200' :
             ticket_pages.append(ticket_page)
             
-    print "\nFetched " + str(len(ticket_pages)) + " tickets from " + str(len(ticket_urls)) + " URLs"
+    print "\nFetched " + str(len(ticket_pages)) + " tickets from " \
+                                            + str(len(ticket_urls)) + " URLs"
     
     return ticket_pages
 
-def getTicketsPagesFromSite(login, password, cfg) :
+def getTicketsPagesFromSite(cfg) :
     """
     getTicketsFromSite(login, password)
-        returns list of pages with tickets from given account ('login', 'password')
+        returns list of pages with tickets from given account
     """
 
     # Account authentication
-    http, headers = rzdAuth(login, password, cfg)
+    http, headers = rzdAuth(cfg)
 
     # Get URLs of all tickets in account
     ticket_urls = getTicketURLs(http, headers, cfg)
@@ -249,10 +265,9 @@ def findAll(S, substring) :
     Returns positions of 'substring' in 'S' as list of ints
 
     NB! finditer() won't find overlapping strings.
-    The regular expression methods, including finditer(), find non-overlapping matches.
+    This methods, including finditer(), find non-overlapping matches.
     To find overlapping matches you need a loop.
     """
-    #return [match.start() for match in re.finditer(re.escape(substring), S)]
     return [match.start() for match in finditer(escape(substring), S)]
 
 def getList(tickets, field) :
@@ -297,43 +312,44 @@ def saveTicketPages(ticket_pages, path = './ticket_pages') :
         files format - html
         files name - md5 hash of file body
     """
-
-    if not os.path.isdir(path) :
-        os.makedirs(path)
-
-    if not path[len(path) - 1] == '/' :
+    if not path[len(path) - 1] == '/' : 
         path += '/'
-
     for item in ticket_pages :
-        # TODO Handle file errors
         filename = path + str(md5(item).hexdigest()) + '.html'
         try: 
-#            with open(filename, 'w') as fd :
-            fd = open(filename, 'w')
-            fd.write(item)
-        except IOError as details:
-            print "ERROR! Cannot save page as " + filename + "!\n" + details       
-
+            with open(filename, 'w') as fd : fd.write(item)
+        except IOError :
+            print "WARNING! Cannot save ticket page as " + filename + "!\n"
+            print 'The page wouldnt be saved.\n'    
     print '\nTicket pages are saved in ' + path
 
-def loadTicketPages(path = './ticket_pages') :   
+def loadTicketPages(directory = './ticket_pages') :   
     """
-    getTicketPages(path)
-        load html ticket pages from 'path' directory
+    loadTicketPages(directory)
+        load html ticket pages from 'directory'
         returns list of strings
     """
     ticket_pages = []
-    print 'Loading ticket pages from ' + path
+    print '\nLoading ticket pages from ' + directory
 
-    for page in os.listdir(path) :
-        # TODO Handle file errors
-        fd = open(path + '/' + page, 'r')
-        ticket_pages.append(fd.read())
-        fd.close()
-        print '\t' + path + '/' + page
-
-    print '\t---------------------\n\t' + str(len(ticket_pages)) + ' / ' + str(len(os.listdir(path))) + " files loaded."
-    return ticket_pages
+    try :
+        for page in os.listdir(directory) :
+            path = directory + '/' + page
+            try: 
+                with open(path, 'r') as fd : 
+                    ticket_pages.append(fd.read())
+            except IOError :
+                print "\nWARNING! Cannot read ticket page from " + path
+                print 'The page wouldnt be processed.'
+            else :
+                print '\t' + path
+    except OSError :
+        print "\nERROR! Cannot list ticket page directory " + directory
+        sys.exit()
+    else :
+        print '\n\t' + str(len(ticket_pages)) + ' / ' \
+                + str(len(os.listdir(directory))) + " files loaded."
+        return ticket_pages
 
 def saveTickets(tickets, path = './tickets.pkl') :  
     """
@@ -341,12 +357,18 @@ def saveTickets(tickets, path = './tickets.pkl') :
         serialize tickets to the 'path' file
         nothing to return
     """
-    # TODO Handle file errors
-    fd = open(path, 'w')
-    dump(tickets, fd)
-    fd.close()
+
+    while True :
+        try: 
+            with open(path, 'w') as fd : 
+                dump(tickets, fd)
+                print "\nTickets are saved as a file in " + path
+            break
+        except IOError :
+            print "ERROR! Cannot save tickets to " + path + "!\n"
+            print 'You can specify new path: '
+            path = raw_input()
     
-    print "\nTickets are saved as a file in " + path
 
 def loadTickets(path = './tickets.pkl') :   
     """
@@ -354,11 +376,17 @@ def loadTickets(path = './tickets.pkl') :
         deserialize (read) tickets from the 'path' file
         returns tickets as a list of dicts
     """
-    # TODO Handle file errors
-    fd = open(path, 'r')
-    tickets = load(fd)
-    fd.close()
-    print '\nTickets loaded from ' + path
+
+    while True :
+        try: 
+            with open(path, 'r') as fd : 
+                tickets = load(fd)
+            break
+        except IOError :
+            print "ERROR! Cannot load tickets from " + path + "!\n"
+            print 'You can specify new path: '
+            path = raw_input()
+            
     return tickets
 
 def saveTable(tickets, path, cfg) :  
@@ -366,16 +394,17 @@ def saveTable(tickets, path, cfg) :
     saveCSVTable(table, path)
         write CSV formatted 'table' on disk as 'path' file
     """
+    
     while True :
         try: 
-            with open(path, 'w') as fd : fd.write(formTable(tickets, cfg))
+            with open(path, 'w') as fd : 
+                fd.write(formTable(tickets, cfg))
+                print "\nTickets are saved as a table in " + path
             break
-        except IOError as details:
+        except IOError:
             print "ERROR! Cannot save table as " + path + "!\n"
             print 'You can specify new table locations: '
             path = raw_input()
-
-    print "\nTickets are saved as a table in " + path
 
 # PARSING
 
@@ -398,33 +427,35 @@ def treatTextFields(tickets, cfg) :
             s = unicode(ticket[field], 'utf-8')
             ticket[field] = s.capitalize()
 
+    # TODO move to config
     # Cities and Stations
     #                       Original        City                    Station
-    substitutions_dict = {u'Горький м'   : [u'Нижний Новогород', u'Московский вокзал)'],  # MARK Cities and stations replasement
-                          u'Н.новгород м': [u'Нижний Новогород', u'Московский вокзал' ],
-                          u'Москва яр'   : [u'Москва',           u'Ярославский вокзал'],
-                          u'Москва кур'  : [u'Москва',           u'Курский вокзал'    ],
-                          u'Москва каз'  : [u'Москва',           u'Казанский вокзал'  ]}
+    substitution_dict = {u'Горький м'   : [u'Нижний Новогород', u'Московский вокзал)'], 
+                         u'Н.новгород м': [u'Нижний Новогород', u'Московский вокзал' ],
+                         u'Москва яр'   : [u'Москва',           u'Ярославский вокзал'],
+                         u'Москва кур'  : [u'Москва',           u'Курский вокзал'    ],
+                         u'Москва каз'  : [u'Москва',           u'Казанский вокзал'  ]}
 
-    substitutions_fields = [['departureCity', 'departureStation'], ['arrivalCity', 'arrivalStation']]
+    substitution_fields = [['departureCity', 'departureStation'], ['arrivalCity', 'arrivalStation']]
 
     for ticket in tickets :
-        for field in substitutions_fields :
+        for field in substitution_fields :
             ticket[field[1]] = u'Вокзал'
-            for item in substitutions_dict.keys() :
+            for item in substitution_dict.keys() :
                 if ticket[field[0]] == item :
-                    ticket[field[0]] = substitutions_dict[item][0]
-                    ticket[field[1]] = substitutions_dict[item][1]
+                    ticket[field[0]] = substitution_dict[item][0]
+                    ticket[field[1]] = substitution_dict[item][1]
 
     return tickets
 
-def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
+def parseTicketPages(ticket_pages, cfg) :  
     """
     parseTicketPages(ticket_pages)
         'ticket_pages' - list of string with ticket pages
         returns tickets as the list of dicts 
         according to the 'marks' settings below.
     """
+    # TODO move to config
     # Marks and other stuff for parsing fucking RZD html
     # List of lists
     #         Mark,                      Start Shift,   End Shift,  Type,    Corresponding Fields of Dict
@@ -469,9 +500,12 @@ def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
 
                 # Converting data to non-string types
                 if mark[3] == 'date' :
-                    chunk = datetime.strptime(chunk,"%d.%m.%Y&nbsp;%H:%M")   # to datetime object
-                    #chunk = time.strptime(chunk,"%d.%m.%Y&nbsp;%H:%M")                # time object doesnt support subtracting
-                    #chunk = datetime.strftime("%Y.%m.%d %H:%M", chunk)       # to string
+                    # to datetime object
+                    chunk = datetime.strptime(chunk,"%d.%m.%Y&nbsp;%H:%M") 
+                    # time object doesnt support subtracting  
+                    #chunk = time.strptime(chunk,"%d.%m.%Y&nbsp;%H:%M")     
+                    # to string 
+                    #chunk = datetime.strftime("%Y.%m.%d %H:%M", chunk)      
                 elif mark[3] == 'int' :
                     chunk = int(chunk)
 
@@ -480,33 +514,44 @@ def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
             # Variable length data
             elif mark[0] == marks[3][0] :   # Route
                 start_pos = mark_pos + int(mark[1])
-                end_pos = start_pos + find( ticket_page[mark_pos + int(mark[1]) : mark_pos + 200], mark[2])
+                end_pos = start_pos + find(ticket_page[mark_pos \
+                                    + int(mark[1]) : mark_pos + 200], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
 
                 middle_pos = find(chunk, cfg['route_middle_mark'])
-                ticket[mark[4][0]] = chunk[0 : middle_pos]                                          #departureCity
-                ticket[mark[4][1]] = chunk[middle_pos + len(cfg['route_middle_mark']) : len(chunk)] #arrivalCity
+                #departureCity
+                ticket[mark[4][0]] = chunk[0 : middle_pos]
+                #arrivalCity
+                ticket[mark[4][1]] = chunk[middle_pos \
+                                + len(cfg['route_middle_mark']) : len(chunk)] 
 
             elif mark[0] == marks[7][0] :     # Car Type
                 start_pos = mark_pos + int(mark[1])
-                end_pos = start_pos + find(ticket_page[mark_pos + int(mark[1]) : mark_pos + 150], mark[2])
+                end_pos = start_pos + find(ticket_page[mark_pos + int(mark[1]) \
+                                                  : mark_pos + 150], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
                 ticket[mark[4]] = chunk
 
             elif mark[0] == marks[9][0] :    # Price
                 start_pos = mark_pos + int(mark[1])
-                end_pos = start_pos + find(ticket_page[mark_pos + int(mark[1]) : mark_pos + 100], mark[2] ) - 9
+                end_pos = start_pos + find(ticket_page[mark_pos + int(mark[1]) \
+                                                : mark_pos + 100], mark[2] ) - 9
                 chunk = ticket_page[start_pos : end_pos]
                 # Replacing of decimal comma with point
                 # Cannot cast string '565.54' directly to int
                 ticket[mark[4]] = int(float(chunk.replace(',','.')))
 
             elif mark[0] == marks[10][0] :    # Passenger
-                # Position of the passenger's name depends on ticket price's position
+                # Position of the passenger's name depends on 
+                # ticket price's position
                 price = str(ticket['price'])
-                price_pos = find(ticket_page, price)     # Too weak, price - just a three or four digit number
-                start_pos = find(ticket_page[price_pos : price_pos + 20], cfg['passenger_end_mark']) + price_pos + len(cfg['passenger_end_mark']) 
-                end_pos = start_pos + find(ticket_page[start_pos : start_pos + 50], mark[2])
+                # Too weak, price - just a three or four digit number
+                price_pos = find(ticket_page, price)     
+                start_pos = find(ticket_page[price_pos : price_pos + 20], \
+                                cfg['passenger_end_mark']) + price_pos \
+                                + len(cfg['passenger_end_mark']) 
+                end_pos = start_pos + find(ticket_page[start_pos \
+                                                    : start_pos + 50], mark[2])
                 chunk = ticket_page[start_pos : end_pos]
                 ticket[mark[4]] = chunk
 
@@ -521,7 +566,9 @@ def parseTicketPages(ticket_pages, cfg) :  # MARK Marks
             tickets.append(ticket)
             print "\tTicket #" + ticket['orderNumber'] + " processed"
 
-    print '\t--------------------------------------\n\t' + str(len(tickets)) + ' unique out of ' + str(len(ticket_pages)) + " tickets processed."
+    print '\t--------------------------------------'
+    print '\t' + str(len(tickets)) + ' unique out of ' \
+            + str(len(ticket_pages)) + " tickets processed."
 
     return  tickets
 
@@ -533,7 +580,7 @@ def formTable(tickets, cfg) :
         returns printable CSV table
         'tickets' - list of dicts
     """
-    # MARK Table field order
+    # TODO move to config
     # Strong order of the fields for dictionary printing
     # List
     fields = ['orderNumber',       # 0
@@ -571,16 +618,16 @@ def formTable(tickets, cfg) :
                 chunk = ticket[field].encode('utf-8', 'ignore')
 
             if field.endswith('Datetime') :
-                chunk = datetime.strftime(ticket[field], cfg['datetime_format'])  
+                chunk = datetime.strftime(ticket[field], cfg['datetime_format'])
                 
             line = line + str(chunk) + delimiter
 
         table = table + line + '\n'
 
-
     return table
 
 def dispTable(tickets, cfg) :
+    """I can disp and save Table, but both of them need to form table before."""
     print '\n' + formTable(tickets, cfg)
 
 def selectPassenger(tickets, name) :
@@ -596,14 +643,15 @@ def selectPassenger(tickets, name) :
     print '\nPassenger selection: ' + name
     for ticket in tickets :
         if ticket['passenger'] == name :
-            # 'remove' operation causes negative spillovers in treatTextFields() :(
+            # 'remove' operation causes negative spillovers in treatTextFields()
             selected_tickets.append(ticket)
 
     if len(selected_tickets) == 0 :
         print "ERROR! There are no tickets with given passenger's name.\nExit."
         sys.exit()
     else :
-        print '\tRemoved ' + str(tickets_quantity - len(selected_tickets)) + ' out of ' + str(tickets_quantity) + ' tickets.'
+        print '\tRemoved ' + str(tickets_quantity - len(selected_tickets))\
+                + ' out of ' + str(tickets_quantity) + ' tickets.'
         return selected_tickets
 
 def dispStatistics(tickets, cfg) :
@@ -630,31 +678,36 @@ def dispStatistics(tickets, cfg) :
 
 
     print '\tTotal number of tickets: ' + str(tickets_quantity)
-    print '\tYour tickets: ' + str(len(tickets)) + ' (' + str( len(tickets) * 100 / tickets_quantity ) + '%)'
+    print '\tYour tickets: ' + str(len(tickets)) \
+            + ' (' + str( len(tickets) * 100 / tickets_quantity ) + '%)'
 
     # Times
 
-    diff_ord_dep = []
-    diff_dep_arr = []
+    d_ord_dep = []
+    d_dep_arr = []
 
     for ticket in tickets :
-        diff_ord_dep.append((ticket['departureDatetime'] - ticket['orderDatetime']).total_seconds())
-        diff_dep_arr.append((ticket['arrivalDatetime'] - ticket['departureDatetime']).total_seconds())
-
-    round_k = 0
+        d_ord_dep.append((ticket['departureDatetime'] \
+                            - ticket['orderDatetime']).total_seconds())
+        d_dep_arr.append((ticket['arrivalDatetime'] \
+                            - ticket['departureDatetime']).total_seconds())
+    
+    # Round Coeff
+    rok = 0
+    
     print '\n\t\tTime differences'
     print '\t\tArr-Dep\t\tDep-Arr'
     print '----------------------------------'
-    print 'Median\t\t' + str(timedelta(seconds = numpy.median(diff_dep_arr))) \
-                       + '\t\t' + str(timedelta(seconds = numpy.median(diff_ord_dep)))
-    print 'Mean\t\t'   + str(timedelta(seconds = round(numpy.mean(diff_dep_arr), round_k))) \
-                       + '\t\t' + str(timedelta(seconds = round(numpy.mean(diff_ord_dep), round_k)))
-    print 'Std\t\t'    + str(timedelta(seconds = round(numpy.std(diff_dep_arr), round_k))) \
-                       + '\t\t' + str(timedelta(seconds = round(numpy.std(diff_ord_dep), round_k)))
-    print 'Min\t\t'    + str(timedelta(seconds = numpy.min(diff_dep_arr))) \
-                       + '\t\t' + str(timedelta(seconds = numpy.min(diff_ord_dep)))
-    print 'Max\t\t'    + str(timedelta(seconds = max(diff_dep_arr))) \
-                       + '\t\t' + str(timedelta(seconds = numpy.max(diff_ord_dep)))
+    print 'Median\t\t' + str(timedelta(seconds = numpy.median(d_dep_arr))) \
+              + '\t\t' + str(timedelta(seconds = numpy.median(d_ord_dep)))
+    print 'Mean\t\t'   + str(timedelta(seconds = round(numpy.mean(d_dep_arr), rok))) \
+              + '\t\t' + str(timedelta(seconds = round(numpy.mean(d_ord_dep), rok)))
+    print 'Std\t\t'    + str(timedelta(seconds = round(numpy.std(d_dep_arr), rok))) \
+              + '\t\t' + str(timedelta(seconds = round(numpy.std(d_ord_dep), rok)))
+    print 'Min\t\t'    + str(timedelta(seconds = min(d_dep_arr))) \
+              + '\t\t' + str(timedelta(seconds = min(d_ord_dep)))
+    print 'Max\t\t'    + str(timedelta(seconds = max(d_dep_arr))) \
+              + '\t\t' + str(timedelta(seconds = max(d_ord_dep)))
 
 
     # Car type
@@ -675,14 +728,14 @@ def dispStatistics(tickets, cfg) :
     # Price by car types
 
     # Data preparation
-    price_by_car_types = {}
+    price_by_car = {}
 
     for t in car_types_set :
-        price_by_car_types[t] = []
+        price_by_car[t] = []
         for car_type, p in zip(car_types, price) :
             if car_type == t :
-                price_by_car_types[t].append(p)
-    price_by_car_types['All'] = price
+                price_by_car[t].append(p)
+    price_by_car['All'] = price
     car_types_set.insert(0, 'All')
 
     # Build Titles
@@ -697,7 +750,7 @@ def dispStatistics(tickets, cfg) :
     for metric in metric_function :
         line = metric + addTabs(metric)
         for ctype in car_types_set :
-            m = str(round(getattr(numpy, metric)(price_by_car_types[ctype]), round_k))
+            m = str(round(getattr(numpy, metric)(price_by_car[ctype]), rok))
             line += m + addTabs(m)
         table += '\n' + line
     print table
@@ -714,7 +767,7 @@ def dispStatistics(tickets, cfg) :
         routes.append(dc + ' -> ' + ac)
 
     route_hist_zip = getHist(routes)
-    h, routes_set = zip(*route_hist_zip)
+    freq, routes_set = zip(*route_hist_zip)
 
     price_by_route = {}
     for route in routes_set :
@@ -723,10 +776,11 @@ def dispStatistics(tickets, cfg) :
             if r == route :
                 price_by_route[route].append(p)
 
-    print '\n\tnumpy.median price\tRoutes'
+    print '\n\tMedian price\tRoutes'
     print '-------------------------------'
-    for h, route in route_hist_zip :
-        print str(h) + '\t' + str(round(numpy.median(price_by_route[route]), round_k)) + '\t\t\t' + route
+    for freq, route in route_hist_zip :
+        print str(freq) + '\t' + str(round(numpy.median(price_by_route[route]), rok))\
+                + '\t\t\t' + route
 
     arr_stations = []
     dep_stations = []
@@ -743,13 +797,13 @@ def dispStatistics(tickets, cfg) :
 
     print '\n\tArrival Stations'
     print '------------------------'
-    for h, v in arr_stations_zip :
-        print str(h) + '\t' + v
+    for freq, value in arr_stations_zip :
+        print str(freq) + '\t' + value
 
     print '\n\tDeparture Stations'
     print '------------------------'
-    for h, v in dep_stations_zip :
-        print str(h) + '\t' + v
+    for freq, value in dep_stations_zip :
+        print str(freq) + '\t' + value
 
 
 # MAIN
@@ -760,27 +814,20 @@ def main(args) :
         realize command line UI;
         to display help message use '-h'
     """
-    cfg_name = 'rzd-ticket-analyser.cfg'
-    cfg_defualt_path = './' + cfg_name
-    cfg = getConfig(cfg_defualt_path)
-    checkConfig(cfg)
-    
-    argn = len(args)
-    
-    print args
+    cfg_defualt_path = './rzd-ticket-analyser.cfg'
     
     keys_help = ['-h', '--help']
     keys_acc =  ['-a', '--acc']
     keys_load = ['-l', '--load']
     keys_save = ['-s', '--save']
     keys_disp = ['-d', '--disp']
-    keys_lic  = ['--lic']
-
-    def strKeys(k) :
-        return k[0] + ' ( or ' + k[1] + ')'
-
+    
     program_name = args[0][2 : len(args[0])]
-
+    
+    def strKeys(k) :
+        """For help message"""
+        return k[0] + ' ( or ' + k[1] + ')'
+        
     help_text = '\nNAME'                                                                                      \
                 '\n\t' + program_name + ' provides an overview and statistics of travels by Russian Railways.' \
                                                                                                                 \
@@ -802,15 +849,15 @@ def main(args) :
                 '\n\t\t\t\t'                    + '\ttickets' + '\t- save tickets in pickle file;'                         \
                 '\n\t\t\t\t'                    + '\ttable'   + '\t- save table of tickets as CSV file.'                  \
                 '\n\n\tOption. All the user options and most of program ones are stored in config file'                  \
-                '\n\t' + cfg_name + ', in which you ought to place login and password of your RZD account. '            \
+                '\n\t' + cfg_defualt_path + ', in which you ought to place login and password of your RZD account. '    \
                 "\n\tAlso it's avalible to set passenger's last name  for tickets' filtration or CSV table options,"   \
-                "\n\tsuch as date and time format, fields' delimiter and saving os.path."                                \
+                "\n\tsuch as date and time format, fields' delimiter and loading/saving paths."                             \
                                                                                                                      \
                 '\n\nEXAMPLES'                                                                                      \
                 "\n\t" + program_name + " -a"                                                                      \
                 "\n\t\t\t- get tickets from your RZD account and shows you tickets' table and statistics;"        \
                 "\n\t\t\t  this is the easiest way to view numbers,"                                             \
-                "\n\t\t\t  just put your login and password into "+ cfg_name + ";\n"                            \
+                "\n\t\t\t  just put your login and password into "+ cfg_defualt_path + ";\n"                    \
                 "\n\t" + program_name + " -l tickets -d table -s table"                                        \
                 "\n\t\t\t- get tickets from pre-saved file of tickets' data, shows you tickets' table and"    \
                 "\n\t\t\t  save the table as CSV file."                                                      \
@@ -825,8 +872,9 @@ def main(args) :
                 '\n\tSubmit new issue: \thttps://bitbucket.org/ks1v/rzd-tickets-analyser/issues/new'\
                 '\n\tProject repo: \t\thttps://bitbucket.org/ks1v/rzd-tickets-analyser'            \
                 '\n\tProject page: \t\thttp://andrewkiselev.com/rzd-tickets-analyser'
-                 
-
+               
+    argn = len(args)
+                   
     if argn == 1 :
         print 'Use -h or --help to show help.'
         sys.exit()
@@ -835,41 +883,38 @@ def main(args) :
         print help_text
         sys.exit()
         
-    if args[1] in keys_lic :
-        # TODO Handle file errors
-        fd = open('./LICENSE', 'r')
-        print fd.read()
-        fd.close()
-        sys.exit()
-
     if argn < 2 :
         print '\nERROR! Insufficient number of arguments.'
         sys.exit()
 
+    cfg = getConfig(cfg_defualt_path)
+    checkConfig(cfg)
+
     if args[1] in keys_acc :
-        ticket_pages = getTicketsPagesFromSite(cfg['login'], cfg['password'], cfg)
+        ticket_pages = getTicketsPagesFromSite(cfg)
         tickets = parseTicketPages(ticket_pages, cfg)
         tickets = treatTextFields(tickets, cfg)
-        current_arg = 2
-
+        curr_arg = 2
 
     elif args[1] in keys_load :
         content = args[2]
-        current_arg = 3
+        curr_arg = 3
 
         if content == 'pages' :
-            if not os.path.isdir(cfg['path_dir'] + cfg['path_pages']) :
-                print '\nERROR! There is no such directory.'
+            path = cfg['path_dir'] + cfg['path_pages']
+            if not os.path.isdir(path) :
+                print '\nERROR! There is no such directory like ' + path + '.'
                 sys.exit()
-            ticket_pages = loadTicketPages(cfg['path_dir'] + cfg['path_pages'])
+            ticket_pages = loadTicketPages(path)
             tickets = parseTicketPages(ticket_pages, cfg)
             tickets = treatTextFields(tickets, cfg)
 
         elif content == 'tickets' :
-            if not os.path.isfile(cfg['path_dir'] + cfg['path_tickets']) :
-                print '\nERROR! There is no such file.'
+            path = cfg['path_dir'] + cfg['path_tickets']
+            if not os.path.isfile(path) :
+                print '\nERROR! There is no such file like ' + path + '.'
                 sys.exit()
-            tickets = loadTickets(cfg['path_dir'] + cfg['path_tickets'])
+            tickets = loadTickets(path)
 
         else :
             print '\nERROR! Unexpected content to load'
@@ -878,33 +923,45 @@ def main(args) :
         print '\nERROR! Unexpected input action'
         sys.exit()
 
-
     if not cfg['default_passenger'] == 'any' :
         tickets = selectPassenger(tickets, cfg['default_passenger'])  
 
-
-    if argn == current_arg :
+    if argn == curr_arg :
         dispTable(tickets, cfg)
         dispStatistics(tickets, cfg)
         sys.exit()
 
     else :
 
-        while current_arg < argn :
+        while curr_arg < argn :
 
-            if ( args[current_arg] in keys_save ) and ( current_arg + 1 <= argn ) :
-                content = args[current_arg + 1]
-                current_arg += 2
-                if not os.path.exists(cfg['path_dir']) : # OPTIM mkdir
-                    os.makedirs(cfg['path_dir'])
-                                        
+            if ( args[curr_arg] in keys_save ) and ( curr_arg + 1 <= argn ) :
+                content = args[curr_arg + 1]
+                curr_arg += 2
+                while True :
+                    try :
+                        if not os.path.exists(cfg['path_dir']) : 
+                            os.makedirs(cfg['path_dir'])
+                        break
+                    except OSError:
+                        print "\nERROR! Cannot create directory for saving: " \
+                                + cfg['path_dir'] + "!\n"
+                        print 'You can specify new locations: '
+                        cfg['path_dir'] = raw_input() 
+                                                  
                 if content == 'pages' :
                     if args[2] == 'tickets' :
-                        print "\nWARNING! Cannot save ticket pages, I don't have it."
+                        print "\nWARNING! I have no ticket pages to save it."
                     else :
-                        if not os.path.exists(cfg['path_dir'] + cfg['path_pages']) : # OPTIM mkdir
-                            os.makedirs(cfg['path_dir'] + cfg['path_pages'])
-                        saveTicketPages(ticket_pages, cfg['path_dir'] + cfg['path_pages'])
+                        path = cfg['path_dir'] + cfg['path_pages']
+                        try :
+                            if not os.path.isdir(path) : 
+                                os.makedirs(path)
+                        except OSError :
+                            print "\nWARNING! Cannot create directory: " + path
+                            print 'Pages wouldnt be saved.'  
+                        else :
+                            saveTicketPages(ticket_pages, path)
                         continue
 
                 elif content == 'tickets' :
@@ -919,10 +976,10 @@ def main(args) :
                     print '\nERROR! Unexpected content to save'
                     sys.exit()
 
-            elif ( args[current_arg] in keys_disp ) and ( current_arg + 2 <= argn ) :
+            elif ( args[curr_arg] in keys_disp ) and ( curr_arg + 2 <= argn ) :
             
-                content = args[current_arg + 1]
-                current_arg += 2
+                content = args[curr_arg + 1]
+                curr_arg += 2
                 
                 if content == 'stats' :
                     dispStatistics(tickets, cfg)
