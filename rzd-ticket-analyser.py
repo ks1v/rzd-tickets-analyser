@@ -5,7 +5,7 @@ __author__  = 'Andrew ks1v Kiselev'
 __email__   = "mail@andrewkiselev.com"
 __year__    = "2012"
 __title__   = "RZD tickets analyser"
-__version__ = '2.0'
+__version__ = '2.1'
 
 
 from httplib2   import Http                 # Downloading
@@ -27,7 +27,7 @@ import ConfigParser                         # Configuration file
 
 # CONFIG
 
-def getOptions(path) :
+def getConfig(path) :
     """
     getOptions(path)   
         read options from config file using ConfigParser module
@@ -44,6 +44,37 @@ def getOptions(path) :
             
     return options
         
+        
+def checkConfig(cfg) :
+    """
+    checkConfig(cfg)
+        check config dict for errors 
+    """
+    # TODO checkOptions
+    
+    if not type(cfg) == type({}) :
+        print 'ERROR! Config variable is not a dictionary!'
+        sys.exit()
+    
+    mandatory_list = ['login', 'password', 'delimiter', 'datetime_format', 'default_city', 
+                      'default_passenger', 'path_dir', 'path_pages', 'path_tickets', 'path_table', 
+                      'host', 'auth_page', 'error_page', 'current_page_mark', 'next_page_url_mark', 
+                      'next_page_url_end_mark', 'cabinet_url', 'ticket_url_mark', 
+                      'ticket_url_end_mark', 'passenger_end_mark', 'route_middle_mark']
+ 
+    cfg_fields = set(cfg.keys())
+    mandatory_set = set(mandatory_list)
+    diff = mandatory_set - cfg_fields
+    
+    if diff :
+        # diff isn't empty => not all field are filled'
+        print "ERROR! Not all mandatory fields of the config are filled. Missing fields: " 
+        for it in diff : print '\t- ' + str(it)
+        sys.exit()
+                        
+                        
+                        
+                        
 
 # SITE
 
@@ -275,9 +306,13 @@ def saveTicketPages(ticket_pages, path = './ticket_pages') :
 
     for item in ticket_pages :
         # TODO Handle file errors
-        fd = open(path + str(md5(item).hexdigest()) + '.html', 'w')
-        fd.write(item)
-        fd.close()
+        filename = path + str(md5(item).hexdigest()) + '.html'
+        try: 
+#            with open(filename, 'w') as fd :
+            fd = open(filename, 'w')
+            fd.write(item)
+        except IOError as details:
+            print "ERROR! Cannot save page as " + filename + "!\n" + details       
 
     print '\nTicket pages are saved in ' + path
 
@@ -310,6 +345,7 @@ def saveTickets(tickets, path = './tickets.pkl') :
     fd = open(path, 'w')
     dump(tickets, fd)
     fd.close()
+    
     print "\nTickets are saved as a file in " + path
 
 def loadTickets(path = './tickets.pkl') :   
@@ -330,11 +366,15 @@ def saveTable(tickets, path, cfg) :
     saveCSVTable(table, path)
         write CSV formatted 'table' on disk as 'path' file
     """
-    # TODO Handle file errors
-    # Write table into CSV file
-    fd = open(path, 'w')
-    fd.write(formTable(tickets, cfg))
-    fd.close()
+    while True :
+        try: 
+            with open(path, 'w') as fd : fd.write(formTable(tickets, cfg))
+            break
+        except IOError as details:
+            print "ERROR! Cannot save table as " + path + "!\n"
+            print 'You can specify new table locations: '
+            path = raw_input()
+
     print "\nTickets are saved as a table in " + path
 
 # PARSING
@@ -722,7 +762,8 @@ def main(args) :
     """
     cfg_name = 'rzd-ticket-analyser.cfg'
     cfg_defualt_path = './' + cfg_name
-    cfg = getOptions(cfg_defualt_path)
+    cfg = getConfig(cfg_defualt_path)
+    checkConfig(cfg)
     
     argn = len(args)
     
